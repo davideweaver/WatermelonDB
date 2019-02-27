@@ -25,15 +25,19 @@ export type SyncDatabaseChangeSet = $Exact<{ [TableName<any>]: SyncTableChangeSe
 
 export type SyncLocalChanges = $Exact<{ changes: SyncDatabaseChangeSet, affectedRecords: Model[] }>
 
+export type SyncUpdatedCreateIds = $Exact<{ [string]: string }>
+export type SyncUpdatedCreateTables = $Exact<{ [TableName<any>]: SyncUpdatedCreateIds }>
+
 export type SyncPullArgs = $Exact<{ lastPulledAt: ?Timestamp }>
 export type SyncPullResult = $Exact<{ changes: SyncDatabaseChangeSet, timestamp: Timestamp }>
 
 export type SyncPushArgs = $Exact<{ changes: SyncDatabaseChangeSet, lastPulledAt: Timestamp }>
+export type SyncPushResult = $Exact<{ updatedCreateTables?: SyncUpdatedCreateTables }>
 
 export type SyncArgs = $Exact<{
   database: Database,
   pullChanges: SyncPullArgs => Promise<SyncPullResult>,
-  pushChanges: SyncPushArgs => Promise<void>,
+  pushChanges: SyncPushArgs => Promise<?SyncPushResult>,
   sendCreatedAsUpdated?: boolean,
 }>
 
@@ -63,8 +67,8 @@ export async function synchronize({
 
   // push phase
   const localChanges = await fetchLocalChanges(database)
-  await pushChanges({ changes: localChanges.changes, lastPulledAt: newLastPulledAt })
-  await markLocalChangesAsSynced(database, localChanges)
+  const pushResults = await pushChanges({ changes: localChanges.changes, lastPulledAt: newLastPulledAt })
+  await markLocalChangesAsSynced(database, localChanges, pushResults)
 }
 
 export async function hasUnsyncedChanges({

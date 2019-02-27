@@ -11,10 +11,12 @@ import {
 } from 'rambdax'
 import { unnest } from '../../utils/fp'
 import { logError } from '../../utils/common'
-import type { Database, Model } from '../..'
+import type { Database, Model, TableName } from '../..'
 
 import { prepareMarkAsSynced, ensureActionsEnabled } from './helpers'
 import type { SyncLocalChanges } from './fetchLocal'
+import type { SyncPushResult } from '..'
+import { sanitizedRaw } from '../../RawRecord'
 
 const unchangedRecordsForRaws = (raws, recordCache) =>
   reduce(
@@ -58,6 +60,7 @@ const destroyDeletedRecords = (db: Database, { changes }: SyncLocalChanges): Pro
 export default function markLocalChangesAsSynced(
   db: Database,
   syncedLocalChanges: SyncLocalChanges,
+  pushResults: ?SyncPushResult
 ): Promise<void> {
   ensureActionsEnabled(db)
   return db.action(async () => {
@@ -66,5 +69,39 @@ export default function markLocalChangesAsSynced(
       db.batch(...map(prepareMarkAsSynced, recordsToMarkAsSynced(syncedLocalChanges))),
       destroyDeletedRecords(db, syncedLocalChanges),
     ])
+
+    if (pushResults && pushResults.updatedCreateTables) {
+      for (const tableKey in pushResults.updatedCreateTables) {
+        if (tableKey) {
+          // $FlowFixMe
+          const table = pushResults.updatedCreateTables[tableKey]
+          for (const id in table) {
+            // $FlowFixMe
+            const collection = db.collections.get(tableKey)
+            const model = await collection.find(id)
+            if (model) {
+              await collection._destroyPermanently(model)
+              await collection.create(record => {
+                const raw = {}
+                for (const key in model._raw) {
+                  if (key && key !== 'id' && key[0] !== '_') {
+                    raw[key] = model._raw[key]
+                  }
+                }
+                for (const key in model) {
+                  if (key && key !== 'id' && key !== 'collection' && key !== 'syncStatus' && key[0] !== '_') {
+                    record[key] = model[key]
+                  }
+                }
+                raw.id = table[id]
+                raw._status = 'synced'
+                record._raw = sanitizedRaw(raw, collection.schema)
+              })
+            }
+          }
+        }
+      }
+    }
+
   }, 'sync-markLocalChangesAsSynced')
 }
