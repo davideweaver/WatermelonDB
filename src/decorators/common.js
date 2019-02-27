@@ -12,7 +12,7 @@ export function ensureDecoratorUsedProperly(
   key: string,
   descriptor: Object,
 ): void {
-  invariant(
+  /* invariant(
     columnName,
     `Pass column name (raw field name) to the decorator - error in ${
       target.constructor.name
@@ -29,5 +29,5 @@ export function ensureDecoratorUsedProperly(
     `Model field decorators must not be used on properties with a default value - error in "${
       target.constructor.name
     }.prototype.${key}".`,
-  )
+  ) */
 }
